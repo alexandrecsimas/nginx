@@ -1,0 +1,67 @@
+# Exemplo: Como usar volumes compartilhados Nginx em outro projeto
+# Salve este arquivo como compose.yaml em outro diretório e use como base
+
+version: '3.8'
+
+# Rede externa para comunicação com o webserver
+networks:
+  default:
+    external:
+      name: webserver_app_network
+
+# Volumes externos compartilhados com o webserver
+volumes:
+  nginx-main-config:
+    external: true
+    name: nginx-main-config
+  nginx-sites-available:
+    external: true
+    name: nginx-sites-available
+  nginx-sites-enabled:
+    external: true
+    name: nginx-sites-enabled
+
+services:
+  # Sua aplicação que precisa acessar configurações Nginx
+  my-app:
+    image: your-app:latest
+    restart: unless-stopped
+    # Se precisar modificar configurações Nginx (read-write)
+    volumes:
+      - nginx-sites-available:/app/nginx-configs/sites-available:ro
+      - nginx-sites-enabled:/app/nginx-configs/sites-enabled:ro
+    environment:
+      - NGINX_CONFIG_PATH=/app/nginx-configs
+    # Não exponha portas externamente - comunicação via rede int-Ierna
+
+  # Exemplo: Ferramenta de gerenciamento de sites
+  site-manager:
+    image: alpine:latest
+    command: >
+      sh -c "
+      echo 'Gerenciador de sites disponível em /app/sites-available'
+      echo 'Sites ativos em /app/sites-enabled'
+      tail -f /dev/null
+      "
+    volumes:
+      - nginx-sites-available:/app/sites-available
+      - nginx-sites-enabled:/app/sites-enabled
+    profiles:
+      - tools  # Use: docker-compose --profile tools up
+
+  # Exemplo: Serviço de backup das configurações
+  config-backup:
+    image: alpine:latest
+    volumes:
+      - nginx-sites-available:/backup/sites-available:ro
+      - nginx-sites-enabled:/backup/sites-enabled:ro
+      - ./backups:/local-backup
+    command: >
+      sh -c "
+      echo 'Iniciando backup das configurações...'
+      mkdir -p /local-backup/$(date +%Y%m%d-%H%M%S)
+      cp -r /backup/* /local-backup/$(date +%Y%m%d-%H%M%S)/
+      echo 'Backup concluído em /local-backup'
+      "
+    profiles:
+      - backup  # Use: docker-compose --profile backup run config-backup
